@@ -1,87 +1,194 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
-<meta charset="UTF-8" />
-<title>Dify Voice Assistant</title>
-<style>
-  body { font-family: sans-serif; padding: 10px; }
-  #recordBtn {
-    background: #4CAF50;
-    color: white; padding: 12px 20px;
-    border: none; border-radius: 8px;
-    font-size: 18px; cursor: pointer;
-  }
-  #recordBtn.active { background: #E53935; }
-  #reply { margin-top: 20px; font-size: 18px; white-space: pre-wrap; }
-</style>
+  <meta charset="UTF-8" />
+  <title>語音運動處方助理</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 40px;
+      background: #f5f8ff;
+    }
+    h2 {
+      margin-bottom: 25px;
+    }
+
+    /* 圓形錄音按鈕 */
+    #recordBtn {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: #ff4b4b;
+      border: none;
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      transition: 0.2s;
+    }
+    #recordBtn.recording {
+      background: #c70000;
+      transform: scale(1.1);
+    }
+
+    #output {
+      margin-top: 35px;
+      white-space: pre-wrap;
+      text-align: left;
+      background: #fff;
+      padding: 18px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+  </style>
 </head>
 
 <body>
-<h2>🎤 AI 運動處方語音助理</h2>
-<button id="recordBtn">🎤 開始說話</button>
-<audio id="player" controls style="width:100%; margin-top:20px;"></audio>
-<div id="reply"></div>
+  <h2>🎤 慢性病運動處方（語音版）</h2>
 
-<script>
-let recorder, chunks = [];
+  <button id="recordBtn">開始錄音</button>
 
-const recordBtn = document.getElementById("recordBtn");
-const player = document.getElementById("player");
-const replyBox = document.getElementById("reply");
+  <div id="output">👉 語音內容 / 回覆會顯示在這裡…</div>
 
-recordBtn.onclick = async () => {
-  if (!recorder) {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recorder = new MediaRecorder(stream);
-    recorder.ondataavailable = e => chunks.push(e.data);
+  <script>
+    const API_KEY = "app-xr8iBjv5WWgb18WD128ZqCVg";
+    const APP_ID = "qbICOS5mFM0dHvcA";  // 你的 Dify Chat App
+    const DIFY_URL = "https://api.dify.ai/v1/chat-messages";
 
-    recorder.onstop = async () => {
-      recordBtn.textContent = "🎤 開始說話";
-      recordBtn.classList.remove("active");
+    let mediaRecorder;
+    let audioChunks = [];
 
-      const blob = new Blob(chunks, { type: "audio/wav" });
-      chunks = [];
-      const arrayBuf = await blob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuf)));
+    const recordBtn = document.getElementById("recordBtn");
+    const output = document.getElementById("output");
 
-      // --- 呼叫 Dify Workflow ---
-      const response = await fetch(
-        "https://api.dify.ai/v1/workflows/YOUR_WORKFLOW_ID/run",
-        {
-          method: "POST",
-          headers: {
-            "Authorization": "Bearer YOUR_API_KEY",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            inputs: { audio_base64: base64Audio }
-          })
-        }
-      );
+    async function startRecording() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
 
-      const result = await response.json();
-      console.log("Dify Result:", result);
+      audioChunks = [];
 
-      const text = result.data?.outputs?.reply_text || "(沒有文字回覆)";
-      const audio = result.data?.outputs?.reply_audio || null;
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
+      };
 
-      replyBox.textContent = "🗣 回覆內容：\n" + text;
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+        const base64Audio = await blobToBase64(audioBlob);
 
-      if (audio) {
-        player.src = "data:audio/mp3;base64," + audio;
-        player.play();
+        output.innerHTML = "🟡 正在辨識語音…";
+
+        const userText = await callSTT(base64Audio);
+        output.innerHTML = "🗣️ 使用者說：\n" + userText + "\n\n🟡 正在產生運動處方…";
+
+        const reply = await callLLM(userText);
+        output.innerHTML = "🗣️ 使用者說：\n" + userText + "\n\n🤖 AI 回覆：\n" + reply;
+
+        await speak(reply);
+      };
+
+      mediaRecorder.start();
+      recordBtn.classList.add("recording");
+      recordBtn.innerText = "錄音中…點擊停止";
+    }
+
+    function stopRecording() {
+      mediaRecorder.stop();
+      recordBtn.classList.remove("recording");
+      recordBtn.innerText = "開始錄音";
+    }
+
+    recordBtn.addEventListener("click", () => {
+      if (recordBtn.classList.contains("recording")) {
+        stopRecording();
+      } else {
+        startRecording();
       }
-    };
-  }
+    });
 
-  if (recorder.state === "inactive") {
-    recordBtn.textContent = "🛑 停止錄音";
-    recordBtn.classList.add("active");
-    recorder.start();
-  } else {
-    recorder.stop();
-  }
-};
-</script>
+    /* ----------- 工具：Blob → Base64 ----------- */
+    function blobToBase64(blob) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(",")[1]);
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    /* ----------- Whisper STT via OpenAI (最快、穩定) ----------- */
+    async function callSTT(base64Audio) {
+      const sttRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + API_KEY,
+        },
+        body: (() => {
+          const formData = new FormData();
+          formData.append("file", base64ToFile(base64Audio, "voice.webm"));
+          formData.append("model", "gpt-4o-mini-tts");
+          return formData;
+        })(),
+      });
+
+      const json = await sttRes.json();
+      return json.text || "(無法辨識語音)";
+    }
+
+    function base64ToFile(base64, filename) {
+      const binary = atob(base64);
+      const array = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        array[i] = binary.charCodeAt(i);
+      }
+      return new File([array], filename, { type: "audio/webm" });
+    }
+
+    /* ----------- 呼叫 Dify LLM ----------- */
+    async function callLLM(text) {
+      const res = await fetch(DIFY_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: {},
+          query: text,
+          response_mode: "blocking",  
+          user: "test-user",
+          app_id: APP_ID
+        })
+      });
+
+      const data = await res.json();
+      return data.answer || "(AI 無回覆)";
+    }
+
+    /* ----------- TTS（OpenAI gpt-4o-mini-tts） ----------- */
+    async function speak(text) {
+      const ttsRes = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini-tts",
+          voice: "alloy",
+          input: text,
+        }),
+      });
+
+      const audioBuffer = await ttsRes.arrayBuffer();
+      const audioBlob = new Blob([audioBuffer], { type: "audio/mp3" });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    }
+  </script>
 </body>
 </html>

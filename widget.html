@@ -139,7 +139,9 @@ async function sendToDify(blob) {
 
   const resp = await fetch("https://api.dify.ai/v1/chat-messages", {
     method: "POST",
-    headers: { Authorization: "Bearer " + app-1WyIJ3hJBXRWb8DbTB7cbiWA },
+    headers: {
+      Authorization: "Bearer app-1WyIJ3hJBXRWb8DbTB7cbiWA"
+    },
     body: form
   });
 

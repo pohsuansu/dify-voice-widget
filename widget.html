@@ -1,99 +1,435 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
-<meta charset="UTF-8">
-<title>語音聊天小工具</title>
-<style>
-    body { font-family: sans-serif; text-align: center; padding-top: 80px; }
-    .mic-btn {
-        width: 180px; height: 180px;
-        background: #e85a54; color: #fff;
-        border-radius: 50%; border: none;
-        font-size: 28px; cursor: pointer;
-        box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+  <meta charset="UTF-8" />
+  <title>慢性病運動處方（語音版）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Noto Sans TC",
+        "Microsoft JhengHei", sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      padding: 40px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: #1f2937;
     }
-    audio { margin-top: 40px; width: 90%; }
-</style>
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 32px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h1 span.emoji {
+      font-size: 32px;
+    }
+
+    .record-button {
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      border: none;
+      background: #f56565;
+      color: #fff;
+      font-size: 28px;
+      font-weight: 700;
+      box-shadow: 0 18px 40px rgba(248, 113, 113, 0.45);
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease,
+        background 0.15s ease, opacity 0.15s ease;
+    }
+
+    .record-button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 24px 50px rgba(248, 113, 113, 0.6);
+    }
+
+    .record-button:active {
+      transform: translateY(2px) scale(0.98);
+      box-shadow: 0 10px 25px rgba(248, 113, 113, 0.5);
+    }
+
+    .record-button.recording {
+      background: #38b2ac;
+      box-shadow: 0 18px 40px rgba(56, 178, 172, 0.5);
+    }
+
+    .record-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: 0 8px 18px rgba(148, 163, 184, 0.4);
+    }
+
+    .hint {
+      margin-top: 32px;
+      max-width: 960px;
+      width: 100%;
+      background: #ffffff;
+      border-radius: 20px;
+      padding: 20px 24px;
+      font-size: 18px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    .hint-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: #edf2ff;
+      color: #4c6fff;
+      margin-left: 4px;
+    }
+
+    .section-label {
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+
+    .bubble {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #f9fafb;
+      white-space: pre-wrap;
+      min-height: 32px;
+      font-size: 16px;
+    }
+
+    .bubble.user {
+      border-left: 4px solid #3b82f6;
+    }
+
+    .bubble.ai {
+      border-left: 4px solid #10b981;
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #6b7280;
+    }
+
+    .status span.dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: #9ca3af;
+    }
+
+    .status span.dot.active {
+      background: #22c55e;
+    }
+
+    audio {
+      margin-top: 12px;
+      width: 100%;
+    }
+
+    .small {
+      font-size: 13px;
+      color: #9ca3af;
+      margin-top: 6px;
+    }
+
+    @media (max-width: 640px) {
+      h1 {
+        font-size: 22px;
+        text-align: center;
+        flex-direction: column;
+      }
+
+      .record-button {
+        width: 180px;
+        height: 180px;
+        font-size: 22px;
+      }
+
+      .hint {
+        font-size: 16px;
+      }
+    }
+  </style>
 </head>
-
 <body>
+  <h1>
+    <span class="emoji">🎙️</span>
+    慢性病運動處方（語音版）
+  </h1>
 
-<h2>🎤 慢性病運動處方（語音版）</h2>
-<button id="recordBtn" class="mic-btn">開始錄音</button>
+  <button id="recordBtn" class="record-button">開始錄音</button>
 
-<div id="textDisplay" style="margin-top:40px;font-size:20px;color:#333"></div>
-<audio id="audioPlayer" controls></audio>
+  <div class="hint">
+    <div class="hint-title">
+      👉 語音內容 / 回覆會顯示在這裡…
+      <span class="tag">測試版</span>
+    </div>
 
-<script>
-const DIFY_API_KEY = "app-xr8iBjv5WWgb18WD128ZqCVg";   // ★ 這是你唯一要放的金鑰
-const DIFY_CHAT_URL = "https://udify.app/chat/nDfhp6v0WgHFH2Y3";
+    <div class="status" id="status">
+      <span class="dot" id="statusDot"></span>
+      狀態：待機
+    </div>
 
-let mediaRecorder;
-let audioChunks = [];
+    <div style="margin-top: 12px;">
+      <div class="section-label">你說的內容（STT）</div>
+      <div class="bubble user" id="userText"></div>
+    </div>
 
-document.getElementById("recordBtn").onclick = async () => {
-    if (!mediaRecorder || mediaRecorder.state === "inactive") {
-        startRecording();
-    } else {
-        stopRecording();
+    <div style="margin-top: 12px;">
+      <div class="section-label">AI 運動處方回覆（LLM）</div>
+      <div class="bubble ai" id="aiText"></div>
+    </div>
+
+    <audio id="audioPlayer" controls></audio>
+
+    <div class="small">
+      🔒 語音會透過 HTTPS 傳到 Dify 後端做 STT / LLM / TTS 處理。  
+      如果長輩說台語，STT 可能會偶爾聽錯，可以順便幫忙看看文字是否合理。
+    </div>
+  </div>
+
+  <script>
+    /***********************
+     * 🔐 設定 Dify 相關參數
+     ***********************/
+    const DIFY_API_KEY = "app-1WyIJ3hJBXRWb8DbTB7cbiWA"; // ← 這裡改成 app-1WyIJ3hJBXRWb8DbTB7cbiWA
+    const DIFY_API_BASE = "https://api.dify.ai/v1";
+
+    // 你的 Chatflow / Chatbot 都是用同一個 /chat-messages endpoint
+    const CHAT_ENDPOINT = DIFY_API_BASE + "/chat-messages";
+    const STT_ENDPOINT = DIFY_API_BASE + "/audio-to-text";
+    const TTS_ENDPOINT = DIFY_API_BASE + "/text-to-audio";
+
+    // 建議每個使用者給一個 pseudo ID（這邊用隨機字串）
+    const USER_ID =
+      "user-" +
+      Math.random().toString(36).slice(2, 8) +
+      "-" +
+      Date.now().toString(36);
+
+    let conversationId = ""; // 保留對話脈絡
+    let mediaRecorder = null;
+    let recordedChunks = [];
+
+    const recordBtn = document.getElementById("recordBtn");
+    const statusEl = document.getElementById("status");
+    const statusDot = document.getElementById("statusDot");
+    const userTextEl = document.getElementById("userText");
+    const aiTextEl = document.getElementById("aiText");
+    const audioPlayer = document.getElementById("audioPlayer");
+
+    function setStatus(text, isActive = false) {
+      statusEl.innerHTML =
+        '<span class="dot ' + (isActive ? "active" : "") + '"></span>' +
+        "狀態：" +
+        text;
     }
-};
 
-async function startRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
+    async function startRecording() {
+      recordedChunks = [];
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: "audio/webm",
+        });
 
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = sendToDify;
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            recordedChunks.push(e.data);
+          }
+        };
 
-    mediaRecorder.start();
-    document.getElementById("recordBtn").innerText = "停止錄音";
-}
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(recordedChunks, { type: "audio/webm" });
+          await processAudio(blob);
+          // 停止麥克風輸入
+          stream.getTracks().forEach((track) => track.stop());
+        };
 
-function stopRecording() {
-    mediaRecorder.stop();
-    document.getElementById("recordBtn").innerText = "開始錄音";
-}
+        mediaRecorder.start();
+        recordBtn.classList.add("recording");
+        recordBtn.textContent = "停止錄音";
+        setStatus("錄音中…請開始說話", true);
+      } catch (err) {
+        console.error(err);
+        alert("無法啟用麥克風，請確認瀏覽器權限設定。");
+      }
+    }
 
-async function sendToDify() {
-    const blob = new Blob(audioChunks, { type: "audio/webm" });
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        recordBtn.classList.remove("recording");
+        recordBtn.disabled = true;
+        setStatus("上傳與辨識中…", true);
+      }
+    }
 
-    let form = new FormData();
-    form.append("file", blob, "audio.webm");
-    form.append("response_mode", "blocking");
-    form.append("user", "elder-user");
-
-    const res = await fetch(DIFY_CHAT_URL, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${DIFY_API_KEY}` },
-        body: form
+    recordBtn.addEventListener("click", () => {
+      if (!mediaRecorder || mediaRecorder.state === "inactive") {
+        startRecording();
+      } else if (mediaRecorder.state === "recording") {
+        stopRecording();
+      }
     });
 
-    const json = await res.json();
+    /*************************************************
+     * 🔁 1. 呼叫 Dify STT：/audio-to-text  → 文字
+     *************************************************/
+    async function callDifySTT(blob) {
+      const formData = new FormData();
+      // webm 也是官方支援格式之一
+      formData.append(
+        "file",
+        blob,
+        "recording-" + new Date().toISOString() + ".webm"
+      );
+      formData.append("user", USER_ID);
 
-    console.log(json);
+      const resp = await fetch(STT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + DIFY_API_KEY,
+        },
+        body: formData,
+      });
 
-    // 顯示文字（LLM reply）
-    document.getElementById("textDisplay").innerText =
-        json.answer || "(未收到文字結果)";
-
-    // 播放 TTS 音訊
-    if (json?.audio?.data) {
-        const audioData = json.audio.data; // base64
-        const audioBlob = base64ToBlob(audioData, "audio/mpeg");
-        const url = URL.createObjectURL(audioBlob);
-        document.getElementById("audioPlayer").src = url;
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error("STT 失敗：" + errText);
+      }
+      const data = await resp.json();
+      return data.text || "";
     }
-}
 
-function base64ToBlob(base64, type) {
-    const bin = atob(base64);
-    const arr = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    return new Blob([arr], { type });
-}
-</script>
+    /********************************************************
+     * 🔁 2. 呼叫 Dify Chat：/chat-messages  → LLM 回覆 & message_id
+     ********************************************************/
+    async function callDifyChat(queryText) {
+      const resp = await fetch(CHAT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + DIFY_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: {}, // 若 Chatflow 有自訂變數可在這裡塞
+          query: queryText,
+          response_mode: "blocking",
+          conversation_id: conversationId || "",
+          user: USER_ID,
+          files: [],
+        }),
+      });
 
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error("Chat 失敗：" + errText);
+      }
+      const data = await resp.json();
+
+      // 記住 conversation_id 方便後續續聊
+      conversationId = data.conversation_id || conversationId;
+
+      return {
+        answer: data.answer || "",
+        messageId: data.message_id || "",
+      };
+    }
+
+    /*************************************************
+     * 🔁 3. 呼叫 Dify TTS：/text-to-audio → 語音 WAV
+     *************************************************/
+    async function callDifyTTS(messageId, fallbackText) {
+      const body = {
+        user: USER_ID,
+      };
+      if (messageId) {
+        body.message_id = messageId;
+      } else if (fallbackText) {
+        body.text = fallbackText;
+      }
+
+      const resp = await fetch(TTS_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + DIFY_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error("TTS 失敗：" + errText);
+      }
+
+      // /text-to-audio 回傳的是 audio/wav 的二進位檔
+      const audioBlob = await resp.blob();
+      return URL.createObjectURL(audioBlob);
+    }
+
+    /**********************************************
+     * 🎯 整體流程：錄音 → STT → Chat → TTS
+     **********************************************/
+    async function processAudio(blob) {
+      try {
+        setStatus("語音轉文字（STT）中…", true);
+
+        const sttText = await callDifySTT(blob);
+        userTextEl.textContent = sttText || "(未辨識到語音)";
+        if (!sttText) {
+          setStatus("沒有辨識到內容，請再試一次 💦", false);
+          recordBtn.disabled = false;
+          recordBtn.textContent = "開始錄音";
+          return;
+        }
+
+        setStatus("呼叫慢性病運動處方 LLM 中…", true);
+        const chatResult = await callDifyChat(sttText);
+        aiTextEl.textContent = chatResult.answer || "(沒有回覆內容)";
+
+        setStatus("文字轉語音（TTS）中…", true);
+        try {
+          const audioUrl = await callDifyTTS(
+            chatResult.messageId,
+            chatResult.answer
+          );
+          audioPlayer.src = audioUrl;
+          audioPlayer.play().catch(() => {
+            // 有些瀏覽器會擋自動播放
+          });
+          setStatus("完成，可以再次錄音 🎉", false);
+        } catch (ttsErr) {
+          console.error(ttsErr);
+          setStatus("TTS 發聲失敗，但文字回覆已完成。", false);
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus("發生錯誤：" + err.message, false);
+      } finally {
+        recordBtn.disabled = false;
+        recordBtn.textContent = "開始錄音";
+      }
+    }
+  </script>
 </body>
 </html>

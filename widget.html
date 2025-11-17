@@ -2,147 +2,92 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8" />
-<title>慢性病運動處方（語音版）</title>
+<title>語音版運動處方</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<!-- WaveSurfer：用來顯示錄音波形 -->
+<!-- WaveSurfer 7（用於顯示錄音後的波形） -->
 <script src="https://unpkg.com/wavesurfer.js"></script>
 
 <style>
   body {
-    font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    font-family: "Noto Sans TC", sans-serif;
     background: #f5f7fb;
-    margin: 0;
-    padding: 40px 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    color: #1f2937;
+    padding: 20px;
+    text-align: center;
   }
-
-  h1 {
-    font-size: 26px;
-    margin-bottom: 20px;
-  }
-
-  .record-button {
-    width: 200px;
-    height: 200px;
+  #recordBtn {
+    width: 160px;
+    height: 160px;
     border-radius: 50%;
+    border: none;
     background: #ef4444;
     color: white;
-    border: none;
     font-size: 24px;
-    font-weight: 700;
     cursor: pointer;
-    transition: 0.2s;
+    margin-top: 20px;
   }
-
-  .record-button.recording {
+  #recordBtn.recording {
     background: #10b981;
   }
-
-  .panel {
-    width: 100%;
-    max-width: 900px;
-    background: #fff;
-    margin-top: 24px;
-    padding: 20px;
-    border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-  }
-
-  audio {
-    width: 100%;
-    margin-top: 12px;
-  }
-
-  .bubble {
-    padding: 12px;
-    border-radius: 10px;
-    margin-top: 8px;
-    white-space: pre-wrap;
-    background: #f3f4f6;
-  }
-
-  .bubble.user { border-left: 4px solid #3b82f6; }
-  .bubble.ai   { border-left: 4px solid #10b981; }
-
-  .status {
-    font-size: 14px;
-    margin-top: 8px;
-    color: #6b7280;
-  }
-
   #waveform {
     width: 100%;
+    max-width: 700px;
     height: 120px;
-    margin-top: 16px;
-    border-radius: 10px;
-    background: #f1f5f9;
+    margin: 20px auto;
+    background: #e2e8f0;
+    border-radius: 8px;
   }
+  .bubble {
+    padding: 12px;
+    margin: 10px auto;
+    max-width: 700px;
+    border-radius: 8px;
+    background: #fff;
+    text-align: left;
+  }
+  .user { border-left: 4px solid #3b82f6; }
+  .ai   { border-left: 4px solid #10b981; }
 </style>
-
 </head>
+
 <body>
 
-<h1>🎙️ 慢性病運動處方（語音版）</h1>
+<h2>🎙️ 語音運動處方 助理</h2>
 
-<button id="recordBtn" class="record-button">開始錄音</button>
+<button id="recordBtn">開始錄音</button>
 
 <div id="waveform"></div>
 
-<div class="panel">
-  <div class="status" id="status">狀態：待機</div>
+<div id="userText" class="bubble user"></div>
+<div id="aiText" class="bubble ai"></div>
 
-  <div style="margin-top: 12px;">
-    <div>你說的內容（STT）</div>
-    <div class="bubble user" id="userText"></div>
-  </div>
-
-  <div style="margin-top: 12px;">
-    <div>AI 回覆（LLM）</div>
-    <div class="bubble ai" id="aiText"></div>
-  </div>
-
-  <audio id="audioPlayer" controls></audio>
-</div>
+<audio id="audioPlayer" controls></audio>
 
 <script>
-/*************************************************
- * 🔐 設定：只要改 API key
- *************************************************/
-const DIFY_API_KEY = "YOUR_DIFY_API_KEY";  // ← 填：app-xxxxxxx
+/************************************************************
+ * 🔐 設定
+ ************************************************************/
+const DIFY_API_KEY = "YOUR_DIFY_API_KEY";  // ← 你的 app Key
 const USER_ID = "u-" + Math.random().toString(36).slice(2);
 let conversationId = "";
 
-/*************************************************
- * 🎧 WaveSurfer（錄音波形）
- *************************************************/
-let wave;
-let waveStream;
+/************************************************************
+ * 🎧 WaveSurfer 初始化（不使用麥克風 plugin）
+ ************************************************************/
+let wavesurfer = WaveSurfer.create({
+  container: "#waveform",
+  waveColor: "#94a3b8",
+  progressColor: "#0ea5e9",
+  cursorWidth: 0,
+});
 
-function initWaveform() {
-  wave = WaveSurfer.create({
-    container: "#waveform",
-    waveColor: "#cbd5e1",
-    progressColor: "#0ea5e9",
-    cursorWidth: 0,
-    height: 120,
-  });
-}
-
-/*************************************************
- * 🎙 瀏覽器錄音
- *************************************************/
+/************************************************************
+ * 🎙 錄音：使用 MediaRecorder（不需要 WaveSurfer microphone）
+ ************************************************************/
 let mediaRecorder;
-let chunks = [];
+let audioChunks = [];
 
 const recordBtn = document.getElementById("recordBtn");
-const statusEl  = document.getElementById("status");
-const userText  = document.getElementById("userText");
-const aiText    = document.getElementById("aiText");
-const audioPlayer = document.getElementById("audioPlayer");
 
 recordBtn.addEventListener("click", async () => {
   if (!mediaRecorder || mediaRecorder.state === "inactive") {
@@ -153,119 +98,67 @@ recordBtn.addEventListener("click", async () => {
 });
 
 async function startRecording() {
-  chunks = [];
-  initWaveform();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    
-    // 波形顯示使用 stream
-    waveStream = stream;
-    wave.microphone = wave.microphone || {};
-    wave.microphone.stream = stream;
-    wave.microphone.init = function () {
-      wave.microphone.mediaRecorder = new MediaRecorder(stream);
-    };
-    wave.microphone.play = function () {
-      wave.microphone.init();
-      wave.microphone.mediaRecorder.ondataavailable = () => {};
-      wave.microphone.mediaRecorder.start();
-      wave.microphone.active = true;
-      wave.microphone.streamNode = wave.backend.ac.createMediaStreamSource(stream);
-      wave.setFilter(wave.backend.ac.createAnalyser());
-      wave.microphone.streamNode.connect(wave.filters[0]);
-    };
-    wave.microphone.play();
+  audioChunks = [];
+  mediaRecorder = new MediaRecorder(stream);
 
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+  mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
 
-    mediaRecorder.onstop = async () => {
-      wave.microphone.streamNode && wave.microphone.streamNode.disconnect();
-      stream.getTracks().forEach(t => t.stop());
+  mediaRecorder.onstop = async () => {
+    const blob = new Blob(audioChunks, { type: "audio/webm" });
 
-      const audioBlob = new Blob(chunks, { type: "audio/webm" });
-      await processAudio(audioBlob);
-    };
+    wavesurfer.loadBlob(blob);  // ← 顯示波形
 
-    mediaRecorder.start();
+    await sendToDify(blob);
+    stream.getTracks().forEach(t => t.stop());
+  };
 
-    recordBtn.textContent = "停止錄音";
-    recordBtn.classList.add("recording");
-    setStatus("錄音中…");
-
-  } catch (err) {
-    alert("無法使用麥克風：" + err);
-  }
+  mediaRecorder.start();
+  recordBtn.textContent = "停止錄音";
+  recordBtn.classList.add("recording");
 }
 
 function stopRecording() {
   mediaRecorder.stop();
-  recordBtn.disabled = true;
-  setStatus("分析語音中…");
+  recordBtn.textContent = "開始錄音";
+  recordBtn.classList.remove("recording");
 }
 
-function setStatus(text) {
-  statusEl.textContent = "狀態：" + text;
-}
-
-/*************************************************
- * 🔁 前端 → Chatflow（附上 sys.files）
- *************************************************/
-async function sendAudioToDify(blob) {
+/************************************************************
+ * 🔁 Dify Chatflow：送出語音（sys.files）
+ ************************************************************/
+async function sendToDify(blob) {
   const form = new FormData();
-  form.append("query", "");          // 語音輸入時 query 為空
+  form.append("query", "");
   form.append("user", USER_ID);
   form.append("response_mode", "blocking");
-  form.append("conversation_id", conversationId);
+  if (conversationId) form.append("conversation_id", conversationId);
 
   form.append("file", blob, "audio.webm");
 
   const resp = await fetch("https://api.dify.ai/v1/chat-messages", {
     method: "POST",
-    headers: {
-      Authorization: "Bearer " + DIFY_API_KEY
-    },
+    headers: { Authorization: "Bearer " + app-1WyIJ3hJBXRWb8DbTB7cbiWA },
     body: form
   });
 
-  if (!resp.ok) throw new Error(await resp.text());
-  return resp.json();
-}
+  const data = await resp.json();
 
-/*************************************************
- * 🎯 整合流程：STT → LLM → TTS
- *************************************************/
-async function processAudio(blob) {
-  try {
-    // 呼叫 Chatflow（STT 會在 Chatflow 內觸發 Whisper_STT）
-    const result = await sendAudioToDify(blob);
+  conversationId = data.conversation_id;
 
-    // 更新對話 ID
-    if (result.conversation_id) conversationId = result.conversation_id;
+  document.getElementById("userText").textContent =
+    data.inputs?.voice_text || "(語音辨識中...)";
 
-    // 前端顯示 STT / LLM
-    userText.textContent = result.inputs?.voice_text || "(語音已辨識)";
-    aiText.textContent = result.answer || "(沒有文字回覆)";
+  document.getElementById("aiText").textContent = data.answer || "(無文字回覆)";
 
-    // 播放語音（TTS 已由 Chatflow 產生）
-    if (result.audio) {
-      const blob = await fetch(result.audio).then(r => r.blob());
-      audioPlayer.src = URL.createObjectURL(blob);
-      audioPlayer.play();
-    }
-
-    setStatus("完成，可以再次錄音");
-
-  } catch (err) {
-    setStatus("發生錯誤：" + err.message);
-  } finally {
-    recordBtn.disabled = false;
-    recordBtn.textContent = "開始錄音";
-    recordBtn.classList.remove("recording");
+  if (data.audio) {
+    const audioPlayer = document.getElementById("audioPlayer");
+    const audioBlob = await fetch(data.audio).then(r => r.blob());
+    audioPlayer.src = URL.createObjectURL(audioBlob);
+    audioPlayer.play();
   }
 }
 </script>
-
 </body>
 </html>

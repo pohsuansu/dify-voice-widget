@@ -59,7 +59,7 @@
 </head>
 <body>
 
-<h1>🎤 語音運動處方 助理 251117 13:20</h1>
+<h1>🎤 語音運動處方 助理 251117 13:25</h1>
 
 <div id="recordBtn">開始錄音</div>
 
@@ -171,44 +171,52 @@ function stopRecording() {
  * 🔁 呼叫 Dify（含 sys.files 語音）
  *************************************************/
 async function sendToDify(blob) {
-    const form = new FormData();
-    form.append("response_mode", "blocking");
-    form.append("user", "voice-user-001");
-    if (conversationId) form.append("conversation_id", conversationId);
+  const form = new FormData();
 
-    // 📌 sys.files
-    form.append("file", blob, "audio.webm");
+  // Dify chat requirements
+  form.append("response_mode", "blocking");
+  form.append("user", "voice-user-001");
 
-    const resp = await fetch(DIFY_CHAT_API, {
-        method: "POST",
-        headers: {
-            Authorization: DIFY_API_KEY
-        },
-        body: form
-    });
+  if (conversationId) {
+    form.append("conversation_id", conversationId);
+  }
 
-    const data = await resp.json();
+  // ⚠️ 最重要的修正：使用 "files"
+  form.append("files", blob, "audio.webm");
 
-    if (resp.status !== 200) {
-        alert("❌ Dify 回應錯誤：" + resp.status + " - " + JSON.stringify(data));
-        return;
-    }
+  const resp = await fetch("https://api.dify.ai/v1/chat-messages", {
+    method: "POST",
+    headers: {
+      Authorization: DIFY_API_KEY
+      // ⚠️ 不要加 Content-Type，瀏覽器會自動加 boundary
+    },
+    body: form
+  });
 
-    conversationId = data.conversation_id;
+  const data = await resp.json();
 
-    document.getElementById("userText").textContent =
-        data.inputs?.voice_text || "(語音辨識中...)";
+  if (!resp.ok) {
+      alert("❌ Dify 回應錯誤：" + resp.status + " - " + JSON.stringify(data));
+      return;
+  }
 
-    document.getElementById("aiText").textContent =
-        data.answer || "(AI 沒有回覆文字)";
+  conversationId = data.conversation_id;
 
-    if (data.audio) {
-        const audioPlayer = document.getElementById("audioPlayer");
-        const audioBlob = await fetch(data.audio).then(r => r.blob());
-        audioPlayer.src = URL.createObjectURL(audioBlob);
-        audioPlayer.play();
-    }
+  document.getElementById("userText").textContent =
+      data.inputs?.voice_text || "(語音辨識中...)";
+
+  document.getElementById("aiText").textContent =
+      data.answer || "(AI 沒有回覆文字)";
+
+  // 播放 AI 語音
+  if (data.audio) {
+      const audioBlob = await fetch(data.audio).then(r => r.blob());
+      const audioPlayer = document.getElementById("audioPlayer");
+      audioPlayer.src = URL.createObjectURL(audioBlob);
+      audioPlayer.play();
+  }
 }
+
 
 /*************************************************
  * 🎛️ 按鈕控制

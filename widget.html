@@ -1,238 +1,185 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>語音運動處方 助理</title>
-
+<meta charset="UTF-8">
+<title>語音運動處方助手</title>
 <style>
-    body {
-        font-family: Arial, sans-serif;
-        background: #f6f8fc;
-        text-align: center;
-        padding: 20px;
-    }
-
-    h1 {
-        font-size: 26px;
-        margin-bottom: 25px;
-    }
-
-    #recordBtn {
-        width: 220px;
-        height: 220px;
-        background: #e74c3c;
-        color: white;
-        border-radius: 50%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        font-size: 28px;
-        cursor: pointer;
-        user-select: none;
-        margin: 0 auto 30px auto;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-    }
-
-    #wave {
-        width: 90%;
-        height: 160px;
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-        margin: 0 auto 25px auto;
-    }
-
-    .bubble {
-        width: 90%;
-        margin: 10px auto;
-        padding: 15px;
-        border-radius: 10px;
-        font-size: 20px;
-        text-align: left;
-    }
-
-    .userTxt { border-left: 5px solid #3498db; background: #eef6ff; }
-    .aiTxt   { border-left: 5px solid #2ecc71; background: #eafff3; }
-
-</style>
-</head>
-<body>
-
-<h1>🎤 語音運動處方 助理 251117 13:25</h1>
-
-<div id="recordBtn">開始錄音</div>
-
-<canvas id="wave"></canvas>
-
-<div id="userText" class="bubble userTxt">(請開始說話…)</div>
-<div id="aiText" class="bubble aiTxt">(等待系統回覆…)</div>
-
-<audio id="audioPlayer"></audio>
-
-<script>
-/*************************************************
- * 🔑 1. 設定 Dify APP API Key（你的）
- *************************************************/
-const DIFY_API_KEY = "Bearer app-1WyIJ3hJBXRWb8DbTB7cbiWA";
-
-/*************************************************
- * 🔗 2. 設定 ChatBot Public URL（你提供的）
- *************************************************/
-const DIFY_PUBLIC_CHATBOT = "https://udify.app/chatbot/rwwFAvWgLAzzOl1P";
-
-/*************************************************
- * 🧠 3. Dify chat-messages API（固定）
- *************************************************/
-const DIFY_CHAT_API = "https://api.dify.ai/v1/chat-messages";
-
-let mediaRecorder, audioChunks = [];
-let audioContext, analyser, dataArray;
-let conversationId = null;
-
-/*************************************************
- * 🎛️ 建立即時音波
- *************************************************/
-function setupWaveform() {
-    const canvas = document.getElementById("wave");
-    const ctx = canvas.getContext("2d");
-
-    function draw() {
-        requestAnimationFrame(draw);
-        if (!analyser) return;
-
-        analyser.getByteTimeDomainData(dataArray);
-
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "#3498db";
-        ctx.beginPath();
-
-        const sliceWidth = canvas.width / dataArray.length;
-        let x = 0;
-
-        for (let i = 0; i < dataArray.length; i++) {
-            let v = dataArray[i] / 128.0;
-            let y = (v * canvas.height) / 2;
-
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-
-            x += sliceWidth;
-        }
-
-        ctx.stroke();
-    }
-    draw();
+body {
+    font-family: system-ui;
+    background: #f5f7fc;
+    text-align: center;
+    padding: 30px;
 }
 
-/*************************************************
- * 🎙️ 開始錄音
- *************************************************/
+#recordBtn {
+    background: #e65352;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 220px;
+    height: 220px;
+    font-size: 28px;
+    cursor: pointer;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.1);
+}
+
+#waveform {
+    margin: 30px auto;
+    width: 90%;
+    height: 130px;
+    background: #dde2ea;
+    border-radius: 12px;
+}
+.box {
+    background: white;
+    width: 90%;
+    margin: 15px auto;
+    padding: 14px;
+    border-radius: 12px;
+    text-align: left;
+    font-size: 20px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>🎤 語音運動處方 助理 251117 13:30</h2>
+
+<button id="recordBtn">開始錄音</button>
+
+<canvas id="waveform"></canvas>
+
+<div class="box"><b>你說：</b> <span id="userText">(尚未輸入)</span></div>
+<div class="box"><b>AI 回覆：</b> <span id="aiText">(尚未回覆)</span></div>
+
+<audio id="audioPlayer" controls></audio>
+
+<script>
+/* -------------------------
+   ⚙️ CONFIG
+------------------------- */
+const DIFY_API_KEY = "app-1WyIJ3hJBXRWb8DbTB7cbiWA";
+const API_URL = "https://api.dify.ai/v1/chat-messages";
+let conversationId = null;
+
+/* -------------------------
+   🎙️ 錄音 + 波形
+------------------------- */
+let mediaRecorder, audioChunks = [];
+let audioContext, analyser, dataArray;
+
+const canvas = document.getElementById("waveform");
+const ctx = canvas.getContext("2d");
+canvas.width = canvas.offsetWidth;
+canvas.height = canvas.offsetHeight;
+
+function drawWaveform() {
+    requestAnimationFrame(drawWaveform);
+    if (!analyser) return;
+
+    analyser.getByteTimeDomainData(dataArray);
+
+    ctx.fillStyle = "#dde2ea";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#667aff";
+    ctx.beginPath();
+
+    let slice = canvas.width * 1.0 / analyser.bufferLength;
+    let x = 0;
+
+    for (let i = 0; i < analyser.bufferLength; i++) {
+        let v = dataArray[i] / 128.0;
+        let y = v * canvas.height/2;
+
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+
+        x += slice;
+    }
+    ctx.stroke();
+}
+
 async function startRecording() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
     audioChunks = [];
 
     mediaRecorder = new MediaRecorder(stream);
     mediaRecorder.start();
 
-    // 🎵 建立波形分析器
-    audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(stream);
+    const source = (audioContext = new AudioContext()).createMediaStreamSource(stream);
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 2048;
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    dataArray = new Uint8Array(analyser.fftSize);
     source.connect(analyser);
-
-    setupWaveform();
-
-    document.getElementById("recordBtn").textContent = "停止錄音";
+    drawWaveform();
 
     mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.onstop = sendAudioToDify;
+
+    document.getElementById("recordBtn").textContent = "停止錄音";
 }
 
-/*************************************************
- * ⏹️ 停止錄音並送到 Dify
- *************************************************/
 function stopRecording() {
     mediaRecorder.stop();
-
-    mediaRecorder.onstop = async () => {
-        const blob = new Blob(audioChunks, { type: "audio/webm" });
-        sendToDify(blob);
-        document.getElementById("recordBtn").textContent = "開始錄音";
-    };
+    document.getElementById("recordBtn").textContent = "開始錄音";
 }
 
-/*************************************************
- * 🔁 呼叫 Dify（含 sys.files 語音）
- *************************************************/
-async function sendToDify(blob) {
-  const form = new FormData();
+/* -------------------------
+   🚀 送語音給 Dify（最重要的修正）
+------------------------- */
+async function sendAudioToDify() {
+    const blob = new Blob(audioChunks, { type: "audio/webm" });
 
-  // Dify chat requirements
-  form.append("response_mode", "blocking");
-  form.append("user", "voice-user-001");
+    const form = new FormData();
+    form.append("response_mode", "blocking");
+    form.append("user", "voice-user-001");
 
-  if (conversationId) {
-    form.append("conversation_id", conversationId);
-  }
+    if (conversationId)
+        form.append("conversation_id", conversationId);
 
-  // ⚠️ 最重要的修正：使用 "files"
-  form.append("files", blob, "audio.webm");
+    // 🔥🔥🔥 關鍵修正：「files」不是 file
+    form.append("files", blob, "audio.webm");
 
-  const resp = await fetch("https://api.dify.ai/v1/chat-messages", {
-    method: "POST",
-    headers: {
-      Authorization: DIFY_API_KEY
-      // ⚠️ 不要加 Content-Type，瀏覽器會自動加 boundary
-    },
-    body: form
-  });
+    const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${DIFY_API_KEY}` },
+        body: form
+    });
 
-  const data = await resp.json();
+    const data = await resp.json();
 
-  if (!resp.ok) {
-      alert("❌ Dify 回應錯誤：" + resp.status + " - " + JSON.stringify(data));
-      return;
-  }
-
-  conversationId = data.conversation_id;
-
-  document.getElementById("userText").textContent =
-      data.inputs?.voice_text || "(語音辨識中...)";
-
-  document.getElementById("aiText").textContent =
-      data.answer || "(AI 沒有回覆文字)";
-
-  // 播放 AI 語音
-  if (data.audio) {
-      const audioBlob = await fetch(data.audio).then(r => r.blob());
-      const audioPlayer = document.getElementById("audioPlayer");
-      audioPlayer.src = URL.createObjectURL(audioBlob);
-      audioPlayer.play();
-  }
-}
-
-
-/*************************************************
- * 🎛️ 按鈕控制
- *************************************************/
-const btn = document.getElementById("recordBtn");
-let isRecording = false;
-
-btn.onclick = () => {
-    if (!isRecording) {
-        startRecording();
-        isRecording = true;
-    } else {
-        stopRecording();
-        isRecording = false;
+    if (!resp.ok) {
+        alert("❌ Dify 回應錯誤：" + resp.status + " - " + JSON.stringify(data));
+        return;
     }
-};
+
+    conversationId = data.conversation_id;
+
+    document.getElementById("userText").textContent =
+        data.inputs?.voice_text || "(語音辨識中...)";
+
+    document.getElementById("aiText").textContent =
+        data.answer || "(AI 沒有文字回覆)";
+
+    // 🎧 播放語音回覆
+    if (data.audio) {
+        const audioBlob = await fetch(data.audio).then(r => r.blob());
+        const player = document.getElementById("audioPlayer");
+        player.src = URL.createObjectURL(audioBlob);
+        player.play();
+    }
+}
+
+/* -------------------------
+   🎛️ UI 綁定
+------------------------- */
+document.getElementById("recordBtn").addEventListener("click", () => {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") startRecording();
+    else stopRecording();
+});
 </script>
 
 </body>
